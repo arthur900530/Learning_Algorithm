@@ -38,7 +38,7 @@ def learning_goal_lsc(model, dataloader, device, n):
         return False, v
 
 
-def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, device, PATH = '/content/drive/MyDrive/新型學習演算法/hw2/weights/self_regression_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True):
+def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True):
     def predict(outputs, v, device):
       pred = torch.zeros(outputs.shape[0]).to(device)
       for i in range(outputs.shape[0]):
@@ -47,6 +47,8 @@ def train_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
         else:
           pred[i] = 1.0
       return pred
+
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     train_acc_history = []
     train_loss_history = []
     val_loss_history = []

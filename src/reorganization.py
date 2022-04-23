@@ -37,10 +37,10 @@ def learning_goal_lsc(model, dataloader, device, n):
             return False, v
 
 
-def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
-              PATH='../weights/reg_checkpoint.pt', num_epochs=10,
-              lr_epsilon=1e-8, n=10, rs=0.001, show=False):
+def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
+              num_epochs=10,lr_epsilon=1e-8, n=10, rs=0.001, show=False):
     # local variables
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     train_acc_history = []
     train_loss_history = []
     val_loss_history = []
@@ -71,29 +71,6 @@ def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
                 pred[i] = 1.0
         return pred
 
-    def first_forward():
-        running_loss = 0.0
-        corrects = 0
-        for inputs, labels in dataloaders[phase]:
-            s = inputs.size(0)
-            inputs = inputs.to(device)
-            labels = labels.to(device)
-            optimizer.zero_grad()
-            with torch.set_grad_enabled(phase == 'train'):
-                # forward
-                outputs = model(inputs)
-                reg_term = cal_reg_term(model, rs)
-                loss = criterion(outputs.squeeze(-1), labels) + reg_term
-                pred = predict(outputs, v, device)
-                # statistics
-                running_loss += loss.item() * s
-                corrects += torch.sum(pred == labels.flatten().data)
-                if phase == 'train':
-                    # backward & adjust weights
-                    loss.backward()
-                    optimizer.step()
-        epoch_loss = running_loss / dataset_sizes[phase]
-        return model, epoch_loss
 
     while epoch < num_epochs:
         torch.save({'model_state_dict': model.state_dict(),
@@ -109,7 +86,23 @@ def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
                 model.eval()
 
             if epoch == -1:
-                model, epoch_loss = first_forward()
+                for inputs, labels in dataloaders[phase]:
+                    s = inputs.size(0)
+                    inputs = inputs.to(device)
+                    labels = labels.to(device)
+                    optimizer.zero_grad()
+                    with torch.set_grad_enabled(phase == 'train'):
+                        # forward
+                        outputs = model(inputs)
+                        reg_term = cal_reg_term(model, rs)
+                        loss = criterion(outputs.squeeze(-1), labels) + reg_term
+                        # statistics
+                        running_loss += loss.item() * s
+                        if phase == 'train':
+                            # backward & adjust weights
+                            loss.backward()
+                            optimizer.step()
+                epoch_loss = running_loss / dataset_sizes[phase]
                 goal_achieved, v = learning_goal_lsc(model, dataloaders[phase], device, n)
                 if goal_achieved:
                     former_loss = epoch_loss
@@ -170,7 +163,7 @@ def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
                         checkpoint = torch.load(PATH)
                         break
                 epoch += 1
-                print('Epoch {}/{}'.format(epoch, num_epochs))
+                print('Reg Epoch {}/{}'.format(epoch, num_epochs))
                 print('-' * 10)
                 train_acc_history.append(epoch_acc)
                 train_loss_history.append(epoch_loss)
@@ -179,9 +172,9 @@ def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
                 val_loss_history.append(epoch_loss)
 
             print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
-            print(goal_failed, tiny_lr)
+
         if goal_failed or tiny_lr:
-            print('Break')
+            print('Break','\n','-' * 10)
             break
 
     result_dict = {'model': checkpoint['model_state_dict'],
@@ -215,15 +208,14 @@ def reg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
     return result_dict
 
 
-def reorg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
+def reorg_model(model, criterion, dataloaders, dataset_sizes, device,
                 PATH='../weights/reorg_checkpoint.pt', lr_epsilon=1e-8, n=10,rs=0.001):
     layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
     p = layers[0].out_features
     k = 0
     while k < p:
-        result = reg_model(model, criterion, optimizer,
-                           dataloaders, dataset_sizes,
-                           device, num_epochs=10, lr_epsilon=lr_epsilon, n=n, rs=rs)
+        result = reg_model(model, criterion, dataloaders, dataset_sizes, device,
+                           PATH='../weights/reg_checkpoint.pt', num_epochs=10, lr_epsilon=lr_epsilon, n=n, rs=rs)
 
         # store model state dict
         torch.save(result['model'], PATH)
@@ -240,10 +232,10 @@ def reorg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
         model = nn.Sequential(nn.Linear(12, p - 1), nn.ReLU(),
                               nn.Linear(p - 1, 1), nn.ReLU()).to(device)
         model.load_state_dict(msd)
-        print('start weight-tuning')
-        result = EU_LG_UA.train_model(model, criterion, optimizer,
-                                      dataloaders, dataset_sizes, device,
+        print('Start weight-tuning')
+        result = EU_LG_UA.train_model(model, criterion, dataloaders, dataset_sizes, device,
                                       epsilon=lr_epsilon, num_epochs=50, n=n, show=False)
+        print('Finish weight-tuning')
         if result['result']:
             print('p--')
             p -= 1
@@ -252,7 +244,7 @@ def reorg_model(model, criterion, optimizer, dataloaders, dataset_sizes, device,
             print('k++')
             k += 1
             model = nn.Sequential(nn.Linear(12, p), nn.ReLU(),
-                                  nn.Linear(p, 1), nn.ReLU()).to(device)
+                                  nn.Linear(p, 1)).to(device)
             model.load_state_dict(torch.load(PATH))
         print(f'k: {k}, p: {p}')
 
