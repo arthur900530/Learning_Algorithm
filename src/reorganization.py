@@ -38,7 +38,7 @@ def learning_goal_lsc(model, dataloader, device, n):
 
 
 def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
-              num_epochs=10,lr_epsilon=1e-8, n=10, rs=0.001, show=False):
+              num_epochs=10,lr_epsilon=1e-8, n=1, rs=0.001, show=False):
     # local variables
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     train_acc_history = []
@@ -208,8 +208,9 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weig
     return result_dict
 
 
+# reorganize function below include regularization, weight-tunning and prunning hidden node
 def reorg_model(model, criterion, dataloaders, dataset_sizes, device,
-                PATH='../weights/reorg_checkpoint.pt', lr_epsilon=1e-8, n=10,rs=0.001):
+                PATH='../weights/reorg_checkpoint.pt', lr_epsilon=1e-8, n=1,rs=0.001):
     layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
     p = layers[0].out_features
     k = 0

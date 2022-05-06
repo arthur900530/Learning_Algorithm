@@ -142,9 +142,10 @@ def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '..
           break
 
     result_dict = {'train_loss_history':train_loss_history,
-             'val_loss_history':val_loss_history,
-             'train_acc_history':train_acc_history,
-             'val_acc_history':val_acc_history}
+                   'val_loss_history':val_loss_history,
+                   'train_acc_history':train_acc_history,
+                   'val_acc_history':val_acc_history,
+                   'v':v}
 
     if goal_achieved:
         result_dict['result'] = True
