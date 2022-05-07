@@ -23,8 +23,7 @@ def get_unacceptable(model, dataloaders, v, device):
     return ua_cases
 
 def isolation(case, dataloaders, zeta = 1e-3):
-    case = case[0].cpu().detach()
-    print(case.shape)
+    case = case[0].cpu().detach()                     # 12
     train_loader = dataloaders['train']
     gamma_not_fit = False
     while True:
@@ -44,8 +43,37 @@ def isolation(case, dataloaders, zeta = 1e-3):
         break
     return gamma
 
-# def cram(model, dataloaders, v, device, zeta = 1e-3):
-#     cases = get_unacceptable(model, dataloaders, v, device)
-#     for case in cases:
-#         gamma = isolation(case, dataloaders, zeta)
+# 0.weight   torch.Size([50, 12]) <class 'torch.Tensor'>
+# 0.bias   torch.Size([50]) <class 'torch.Tensor'>
+# 2.weight   torch.Size([1, 50]) <class 'torch.Tensor'>
+# 2.bias   torch.Size([1]) <class 'torch.Tensor'>
+
+def cram(model, dataloaders, v, omin, zmax, device, zeta = 1e-3):
+    cases = get_unacceptable(model, dataloaders, v, device)
+    params = model.state_dict()
+    for case in cases:
+        with torch.no_grad(True):
+            former_product = torch.matmul(params['2.weight'], (torch.matmul(params['0.weight'],case[0])+params['0.bias']))
+            gamma = isolation(case[0], dataloaders, zeta)   # 12,1
+            whp1 = whp2 = whp3 = torch.transpose(gamma, 0, 1)
+            added_weights = torch.cat((whp1,whp2,whp3), 0)
+            params['0.weight'] = torch.cat((params['0.weight'], added_weights), 0)
+            whp1o = zeta - torch.matmul(torch.transpose(gamma, 0, 1), case[0])
+            whp2o = - torch.matmul(torch.transpose(gamma, 0, 1), case[0])
+            whp3o = -zeta - torch.matmul(torch.transpose(gamma, 0, 1), case[0])
+            added_biases = torch.cat((whp1o, whp2o, whp3o), 0)
+            params['0.bias'] = torch.cat((params['0.bias'], added_biases), 0)
+            if case[1] == 1:
+                wop1 = wop3 = (omin - params['2.bias'] - former_product)/zeta
+                wop2 = -2*(omin - params['2.bias'] - former_product)/zeta
+                added_weights2 = torch.cat((wop1, wop2, wop3), 1)
+                params['2.weight'] = torch.cat((params['2.weight'], added_weights2), 1)
+            else:
+                wop1 = wop3 = (zmax - params['2.bias'] - former_product) / zeta
+                wop2 = -2 * (zmax - params['2.bias'] - former_product) / zeta
+                added_weights2 = torch.cat((wop1, wop2, wop3), 1)
+                params['2.weight'] = torch.cat((params['2.weight'], added_weights2), 1)
+
+    return params
+
 

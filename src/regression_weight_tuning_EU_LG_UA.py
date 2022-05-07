@@ -27,15 +27,15 @@ def learning_goal_lsc(model, dataloader, device, n):
                     zero_max = np.append(zero_max, o)
                     a = np.argmin(zero_max)
                     zero_max = np.delete(zero_max, a)
-    om = np.max(one_min)
-    zm = np.min(zero_max)
+    omin = np.max(one_min)
+    zmax = np.min(zero_max)
     # print('class one min: ', om)
     # print('class zero max', zm)
-    v = (om + zm)/2
-    if om > zm:
-        return True, v
+    v = (omin + zmax)/2
+    if omin > zmax:
+        return True, v, omin, zmax
     else:
-        return False, v
+        return False, v, omin, zmax
 
 
 def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True):
@@ -95,7 +95,7 @@ def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '..
 
             if phase == 'train':
                 # learning goal
-                goal_achieved, v = learning_goal_lsc(model, dataloaders[phase], device, n)
+                goal_achieved, v, omin, zmax  = learning_goal_lsc(model, dataloaders[phase], device, n)
                 if goal_achieved:
                     break
                 # weight tuning
@@ -141,11 +141,12 @@ def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '..
         if goal_achieved or tiny_lr:
           break
 
+
     result_dict = {'train_loss_history':train_loss_history,
                    'val_loss_history':val_loss_history,
                    'train_acc_history':train_acc_history,
                    'val_acc_history':val_acc_history,
-                   'v':v}
+                   'v':v, 'one_min':omin, 'zero_max':zmax}
 
     if goal_achieved:
         result_dict['result'] = True
