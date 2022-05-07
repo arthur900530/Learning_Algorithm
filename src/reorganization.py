@@ -6,8 +6,10 @@ import matplotlib.pyplot as plt
 import regression_weight_tuning_EU_LG_UA as EU_LG_UA
 
 
-def learning_goal_lsc(model, dataloader, device, n):
+def learning_goal_lsc(model, dataloader, v, device, n):
     clone_model = copy.deepcopy(model)
+    q_one_min = 1
+    q_zero_max = 0
     one_min = np.ones(n) * 10
     zero_max = np.zeros(n) * (-10)
     with torch.no_grad():
@@ -20,24 +22,34 @@ def learning_goal_lsc(model, dataloader, device, n):
             for i in range(outputs.shape[0]):
                 if labels[i] == 1.0:
                     o = outputs[i]
+                    if o > v and o < q_one_min:
+                        q_one_min = o
                     one_min = np.append(one_min, o)
                     a = np.argmax(one_min)
                     one_min = np.delete(one_min, a)
                 else:
                     o = np.array([outputs[i]])
+                    if o < v and o > q_zero_max:
+                        q_zero_max = o
                     zero_max = np.append(zero_max, o)
                     a = np.argmin(zero_max)
                     zero_max = np.delete(zero_max, a)
-        om = np.max(one_min)
-        zm = np.min(zero_max)
-        v = (om + zm) / 2
-        if om > zm:
-            return True, v
+    omin = np.max(one_min)
+    zmax = np.min(zero_max)
+    if q_zero_max != 0 and q_one_min != 1:
+        v = (q_one_min + q_zero_max)/2
+        if omin > zmax :
+            return True, v, q_one_min, q_zero_max
         else:
-            return False, v
+            return False, v, q_one_min, q_zero_max
+    else:
+        if omin > zmax :
+            return True, v, v + 0.1, v - 0.1
+        else:
+            return False, v, v + 0.1, v - 0.1
 
 
-def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
+def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../weights/reg_checkpoint.pt',
               num_epochs=10,lr_epsilon=1e-8, n=1, rs=0.001, show=False):
     # local variables
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
@@ -50,7 +62,6 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weig
     tiny_lr = False
     checkpoint = None
     epoch = -1
-    v = 0.7
 
     def cal_reg_term(model, rs=0.001):
         layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
@@ -103,7 +114,7 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weig
                             loss.backward()
                             optimizer.step()
                 epoch_loss = running_loss / dataset_sizes[phase]
-                goal_achieved, v = learning_goal_lsc(model, dataloaders[phase], device, n)
+                goal_achieved, v, omin, zmax = learning_goal_lsc(model, dataloaders[phase], v, device, n)
                 if goal_achieved:
                     former_loss = epoch_loss
                     epoch += 1
@@ -209,13 +220,13 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weig
 
 
 # reorganize function below include regularization, weight-tunning and prunning hidden node
-def reorg_model(model, criterion, dataloaders, dataset_sizes, device,
+def reorg_model(model, criterion, dataloaders, dataset_sizes, v, device,
                 PATH='../weights/reorg_checkpoint.pt', lr_epsilon=1e-8, n=1,rs=0.001):
     layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
     p = layers[0].out_features
     k = 0
     while k < p:
-        result = reg_model(model, criterion, dataloaders, dataset_sizes, device,
+        result = reg_model(model, criterion, dataloaders, dataset_sizes, v, device,
                            PATH='../weights/reg_checkpoint.pt', num_epochs=10, lr_epsilon=lr_epsilon, n=n, rs=rs)
 
         # store model state dict
@@ -235,7 +246,7 @@ def reorg_model(model, criterion, dataloaders, dataset_sizes, device,
         model.load_state_dict(msd)
         print('Start weight-tuning')
         result = EU_LG_UA.train_model(model, criterion, dataloaders, dataset_sizes, device,
-                                      epsilon=lr_epsilon, num_epochs=50, n=n, show=False)
+                                      epsilon=lr_epsilon, num_epochs=50, n=n, show=False, v=v)
         print('Finish weight-tuning')
         if result['result']:
             print('p--')

@@ -5,8 +5,10 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
 
-def learning_goal_lsc(model, dataloader, device, n):
+def learning_goal_lsc(model, dataloader, v, device, n):
     clone_model = copy.deepcopy(model)
+    q_one_min = 1
+    q_zero_max = 0
     one_min = np.ones(n) * 10
     zero_max = np.zeros(n) * (-10)
     with torch.no_grad():
@@ -19,11 +21,15 @@ def learning_goal_lsc(model, dataloader, device, n):
             for i in range(outputs.shape[0]):
                 if labels[i] == 1.0:
                     o = outputs[i]
+                    if o > v and o < q_one_min:
+                        q_one_min = o
                     one_min = np.append(one_min, o)
                     a = np.argmax(one_min)
                     one_min = np.delete(one_min, a)
                 else:
                     o = np.array([outputs[i]])
+                    if o < v and o > q_zero_max:
+                        q_zero_max = o
                     zero_max = np.append(zero_max, o)
                     a = np.argmin(zero_max)
                     zero_max = np.delete(zero_max, a)
@@ -31,14 +37,20 @@ def learning_goal_lsc(model, dataloader, device, n):
     zmax = np.min(zero_max)
     # print('class one min: ', om)
     # print('class zero max', zm)
-    v = (omin + zmax)/2
-    if omin > zmax:
-        return True, v, omin, zmax
+    if q_zero_max != 0 and q_one_min != 1:
+        v = (q_one_min + q_zero_max)/2
+        if omin > zmax :
+            return True, v, q_one_min, q_zero_max
+        else:
+            return False, v, q_one_min, q_zero_max
     else:
-        return False, v, omin, zmax
+        if omin > zmax :
+            return True, v, v + 0.1, v - 0.1
+        else:
+            return False, v, v + 0.1, v - 0.1
 
 
-def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True):
+def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True, v=0.6):
     def predict(outputs, v, device):
       pred = torch.zeros(outputs.shape[0]).to(device)
       for i in range(outputs.shape[0]):
@@ -58,7 +70,7 @@ def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '..
     tiny_lr = False
     checkpoint = None
     epoch = 0
-    v = 0.7
+    v = v
 
     while epoch < num_epochs:
         # Each epoch has a training and validation phase
@@ -95,7 +107,7 @@ def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '..
 
             if phase == 'train':
                 # learning goal
-                goal_achieved, v, omin, zmax  = learning_goal_lsc(model, dataloaders[phase], device, n)
+                goal_achieved, v, omin, zmax  = learning_goal_lsc(model, dataloaders[phase], v, device, n)
                 if goal_achieved:
                     break
                 # weight tuning
