@@ -9,8 +9,8 @@ def learning_goal_lsc(model, dataloader, v, device, n):
     clone_model = copy.deepcopy(model)
     q_one_min = 1
     q_zero_max = 0
-    one_min = np.ones(n) * 10
-    zero_max = np.zeros(n) * (-10)
+    one_min = np.ones(n)
+    zero_max = np.zeros(n)
     with torch.no_grad():
         for inputs, labels in dataloader:
             inputs = inputs.to(device)
@@ -35,8 +35,7 @@ def learning_goal_lsc(model, dataloader, v, device, n):
                     zero_max = np.delete(zero_max, a)
     omin = np.max(one_min)
     zmax = np.min(zero_max)
-    # print('class one min: ', om)
-    # print('class zero max', zm)
+
     if q_zero_max != 0 and q_one_min != 1:
         v = (q_one_min + q_zero_max)/2
         if omin > zmax :
@@ -50,7 +49,7 @@ def learning_goal_lsc(model, dataloader, v, device, n):
             return False, v, v + 0.1, v - 0.1
 
 
-def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=5, show=True, v=0.6):
+def train_model(model, criterion, dataloaders, dataset_sizes, device, PATH = '../weights/train_checkpoint.pt', epsilon=1e-6, num_epochs=30, n=1, show=True, v=0.6):
     def predict(outputs, v, device):
       pred = torch.zeros(outputs.shape[0]).to(device)
       for i in range(outputs.shape[0]):
