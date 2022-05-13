@@ -4,6 +4,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.nn.functional as F
 
+def learning_goal_2_class(model, dataloader, ep, device):
+    clone_model = copy.deepcopy(model)
+    with torch.no_grad():
+        for inputs, labels in dataloader:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+            outputs = clone_model(inputs).squeeze(-1)
+            outputs = outputs.cpu().detach().numpy()
+            labels = labels.cpu().detach().numpy()
+            for i in range(outputs.shape[0]):
+                if np.abs(i - labels[i]) < ep:
+                    continue
+                else:
+                    return False
+    return True
+
 
 def learning_goal_lsc(model, dataloader, v, device, n):
     clone_model = copy.deepcopy(model)
@@ -15,7 +31,7 @@ def learning_goal_lsc(model, dataloader, v, device, n):
         for inputs, labels in dataloader:
             inputs = inputs.to(device)
             labels = labels.to(device)
-            outputs = clone_model(inputs).squeeze(-1)
+            outputs = clone_model(inputs).squeeze(-1)     # 8,1 -> 8
             outputs = outputs.cpu().detach().numpy()
             labels = labels.cpu().detach().numpy() 
             for i in range(outputs.shape[0]):
