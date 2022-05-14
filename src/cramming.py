@@ -149,13 +149,13 @@ def cram_lgt1(model, dataloaders, ep, zeta = 0.001):
             params['l1.bias'] = torch.cat((params['l1.bias'], added_biases), 0)
 
             if case[1] == 1:
-                wop1 = wop3 = (torch.ones(1,dtype=torch.float32) - former_product)/zeta
-                wop2 = -2 * (torch.ones(1,dtype=torch.float32) - former_product)/zeta
+                wop1 = wop3 = ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
+                wop2 = -2 * ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
                 added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
                 params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
             else:
-                wop1 = wop3 = (torch.zeros(1,dtype=torch.float32) - former_product) / zeta
-                wop2 = -2 * (torch.zeros(1,dtype=torch.float32) - former_product) / zeta
+                wop1 = wop3 = ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
+                wop2 = -2 * ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
                 added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
                 params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
             p += 3
