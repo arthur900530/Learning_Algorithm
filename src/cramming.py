@@ -120,7 +120,8 @@ class slfn(nn.Module):
         out = self.l2(out)
         return out
 
-def cram_lgt1(model, dataloaders, ep, zeta = 1e-3):
+def cram_lgt1(model, dataloaders, ep, zeta = 0.001):
+    zeta = torch.tensor([zeta], dtype=torch.float32)
     cases = get_unacceptable_lgt1(model, dataloaders, ep)
     clone_model = copy.deepcopy(model).to('cpu')
     params = clone_model.state_dict()
