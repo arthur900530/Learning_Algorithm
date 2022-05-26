@@ -206,20 +206,19 @@ def learning_goal_1(model, dataloader, ep, device):
     return True
 
 
-def train_model_lgt1(model, criterion, dataloaders, dataset_sizes, device, PATH='../weights/train_checkpoint.pt',
-                    epsilon=1e-6, num_epochs=30, lgep = 0.3, show=True):
-    def predict(outputs, ep, device):
+def train_model_lgt1_reg(model, criterion, dataloaders, dataset_sizes, device, PATH='../weights/train_checkpoint.pt',
+                            epsilon=1e-6, num_epochs=30, lgep = 0.35, show=True):
+    def predict(outputs, ep, labels, device):
         pred = torch.zeros(outputs.shape[0]).to(device)
         for i in range(outputs.shape[0]):
-            if np.abs(outputs[i].item() - 1) <= ep:
+            if np.abs(outputs[i].item() - labels[i].item()) <= ep:
                 pred[i] = 1.0
-            elif np.abs(outputs[i].item()) <= ep:
-                pred[i] = 0
             else:
-                pred[i] = -1.0
+                pred[i] = 0
+        # print(pred)
         return pred
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
     train_acc_history = []
     train_loss_history = []
     val_loss_history = []
@@ -251,10 +250,11 @@ def train_model_lgt1(model, criterion, dataloaders, dataset_sizes, device, PATH=
                     # forward
                     outputs = model(inputs)
                     loss = criterion(outputs.squeeze(-1), labels)
-                    pred = predict(outputs, lgep, device)
+                    pred = predict(outputs, lgep, labels, device)
                     # statistics
                     running_loss += loss.item() * s
-                    corrects += torch.sum(pred == labels.flatten().data)
+                    # corrects += torch.sum(pred == labels.flatten().data)
+                    corrects += torch.sum(pred).item()
                     if phase == 'train':
                         # backward & adjust weights
                         loss.backward()
@@ -300,14 +300,14 @@ def train_model_lgt1(model, criterion, dataloaders, dataset_sizes, device, PATH=
                         # print('lr decrease')
                         break
                 epoch += 1
-                # print('Epoch {}/{}'.format(epoch, num_epochs))
-                # print('-' * 10)
+                print('Epoch {}/{}'.format(epoch, num_epochs))
+                print('-' * 10)
                 train_acc_history.append(epoch_acc)
                 train_loss_history.append(epoch_loss)
             else:
                 val_acc_history.append(epoch_acc)
                 val_loss_history.append(epoch_loss)
-            # print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
+            print('{} Loss: {:.4f} Acc: {:.4f}'.format(phase, epoch_loss, epoch_acc))
 
         if goal_achieved or tiny_lr:
             break
@@ -316,7 +316,7 @@ def train_model_lgt1(model, criterion, dataloaders, dataset_sizes, device, PATH=
                    'val_loss_history': val_loss_history,
                    'train_acc_history': train_acc_history,
                    'val_acc_history': val_acc_history,
-                   'ep': lgep}
+                   'lgep': lgep}
 
     if goal_achieved:
         result_dict['result'] = True

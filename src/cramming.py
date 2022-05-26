@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
-def get_unacceptable_lgt1(model, dataloaders, ep):
+def get_unacceptable_lgt1_reg(model, dataloaders, lgep):
     train_loader = dataloaders['train']
     clone_model = copy.deepcopy(model).to('cpu')
     ua_cases = []
@@ -15,14 +15,12 @@ def get_unacceptable_lgt1(model, dataloaders, ep):
             outputs = outputs.cpu().detach().numpy()
             labels = labels.cpu().detach().numpy()
             for i in range(outputs.shape[0]):
-                if np.abs(outputs[i].item() - 1) <= ep:
-                    pred = 1.0
-                elif np.abs(outputs[i].item()) <= ep:
-                    pred = 0
+                if np.abs(outputs[i].item() - labels[i].item()) <= lgep:
+                    pred = 1.0          # correctly predicted
                 else:
-                    pred = -1.0
-                if labels[i] != pred:
-                    print(f'Pred: {pred}, Label: {labels[i]}')
+                    pred = 0            # incorrectly predicted
+                if pred == 0:
+                    # print(f'Pred: {outputs[i].item()}, Label: {labels[i].item()}')
                     ua_cases.append((inputs[i],labels[i]))
     return ua_cases
 
@@ -50,7 +48,7 @@ def isolation(case, dataloaders, zeta = 1e-3):
     train_loader = dataloaders['train']
     while True:
         gamma_not_fit = False
-        gamma = torch.rand(12,1, dtype=torch.float32)
+        gamma = torch.rand(18,1, dtype=torch.float32)
         for inputs, labels in train_loader:            # 8,12  8,
             inputs = inputs.cpu().detach()
             for i in range(inputs.shape[0]):
@@ -59,8 +57,6 @@ def isolation(case, dataloaders, zeta = 1e-3):
                         continue
                     else:
                         gamma_not_fit = True
-                else:
-                    print("Meet case...")
             if gamma_not_fit:
                 break
         if not gamma_not_fit:
@@ -111,31 +107,32 @@ def cram_lsc(model, dataloaders, v, omin, zmax, zeta = 1e-3):
     return params
 
 class slfn(nn.Module):
-    def __init__(self, p):
+    def __init__(self, m, p):
         super(slfn, self).__init__()
-        self.l1 = nn.Linear(12,p)
+        self.l1 = nn.Linear(m,p)
         self.l2 = nn.Linear(p,1)
     def forward(self, x):
         out = F.relu(self.l1(x))
         out = self.l2(out)
         return out
 
-def cram_lgt1(model, dataloaders, ep, zeta = 0.001):
+def cram_lgt1(model, dataloaders, lgep, zeta = 0.001):
     zeta = torch.tensor([zeta], dtype=torch.float32)
-    cases = get_unacceptable_lgt1(model, dataloaders, ep)
+    cases = get_unacceptable_lgt1_reg(model, dataloaders, lgep)
     clone_model = copy.deepcopy(model).to('cpu')
     params = clone_model.state_dict()
+    m = next(iter(dataloaders['train']))[0].shape[-1]
     p = params['l1.weight'].shape[0]
     for case in cases:
-        print('='*50)
+        # print('='*50)
         with torch.set_grad_enabled(False):
-            modela = slfn(p).to('cpu')
+            modela = slfn(m,p).to('cpu')
             modela.load_state_dict(params)
             model.eval()
             former_product = modela(case[0])
             former_product = former_product.float()
             gamma = isolation(case[0], dataloaders, zeta)   # 12,1
-            print(f'G: {gamma}, Case: {case[0]}')
+            # print(f'G: {gamma}, Case: {case[0]}')
             whp1 = whp2 = whp3 = torch.transpose(gamma, 0, 1)
             added_weights = torch.cat((whp1, whp2, whp3), 0)
             params['l1.weight'] = torch.cat((params['l1.weight'], added_weights), 0)
@@ -148,16 +145,20 @@ def cram_lgt1(model, dataloaders, ep, zeta = 0.001):
 
             params['l1.bias'] = torch.cat((params['l1.bias'], added_biases), 0)
 
-            if case[1] == 1:
-                wop1 = wop3 = ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
-                wop2 = -2 * ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
-                added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
-                params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
-            else:
-                wop1 = wop3 = ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
-                wop2 = -2 * ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
-                added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
-                params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
+            wop1 = wop3 = ((case[1] - former_product) / zeta)
+            wop2 = -2 * ((case[1] - former_product)/zeta)
+            added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
+            params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
+            # if case[1] == 1:
+            #     wop1 = wop3 = ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
+            #     wop2 = -2 * ((torch.ones(1,dtype=torch.float32) - former_product)/zeta)
+            #     added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
+            #     params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
+            # else:
+            #     wop1 = wop3 = ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
+            #     wop2 = -2 * ((torch.zeros(1,dtype=torch.float32) - former_product) / zeta)
+            #     added_weights2 = torch.cat((wop1, wop2, wop3)).unsqueeze(0)
+            #     params['l2.weight'] = torch.cat((params['l2.weight'], added_weights2), 1)
             p += 3
     return params
 

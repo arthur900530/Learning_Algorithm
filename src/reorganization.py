@@ -2,16 +2,23 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import regression_weight_tuning_EU_LG_UA as EU_LG_UA
 
+class slfn(nn.Module):
+    def __init__(self, m, p):
+        super(slfn, self).__init__()
+        self.l1 = nn.Linear(m,p)
+        self.l2 = nn.Linear(p,1)
+    def forward(self, x):
+        out = F.relu(self.l1(x))
+        out = self.l2(out)
+        return out
 
-def learning_goal_lsc(model, dataloader, v, device, n):
+
+def learning_goal_1(model, dataloader, ep, device):
     clone_model = copy.deepcopy(model)
-    q_one_min = 1
-    q_zero_max = 0
-    one_min = np.ones(n) * 10
-    zero_max = np.zeros(n) * (-10)
     with torch.no_grad():
         for inputs, labels in dataloader:
             inputs = inputs.to(device)
@@ -20,48 +27,14 @@ def learning_goal_lsc(model, dataloader, v, device, n):
             outputs = outputs.cpu().detach().numpy()
             labels = labels.cpu().detach().numpy()
             for i in range(outputs.shape[0]):
-                if labels[i] == 1.0:
-                    o = outputs[i]
-                    if o > v and o < q_one_min:
-                        q_one_min = o
-                    one_min = np.append(one_min, o)
-                    a = np.argmax(one_min)
-                    one_min = np.delete(one_min, a)
+                if np.abs(i - labels[i]) <= ep:
+                    continue
                 else:
-                    o = np.array([outputs[i]])
-                    if o < v and o > q_zero_max:
-                        q_zero_max = o
-                    zero_max = np.append(zero_max, o)
-                    a = np.argmin(zero_max)
-                    zero_max = np.delete(zero_max, a)
-    omin = np.max(one_min)
-    zmax = np.min(zero_max)
-    if q_zero_max != 0 and q_one_min != 1:
-        v = (q_one_min + q_zero_max)/2
-        if omin > zmax :
-            return True, v, q_one_min, q_zero_max
-        else:
-            return False, v, q_one_min, q_zero_max
-    else:
-        if omin > zmax :
-            return True, v, v + 0.1, v - 0.1
-        else:
-            return False, v, v + 0.1, v - 0.1
+                    return False
+    return True
 
-
-def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../weights/reg_checkpoint.pt',
-              num_epochs=10,lr_epsilon=1e-8, n=1, rs=0.001, show=False):
-    # local variables
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-    train_acc_history = []
-    train_loss_history = []
-    val_loss_history = []
-    val_acc_history = []
-    lr_epsilon = lr_epsilon
-    goal_failed = False
-    tiny_lr = False
-    checkpoint = None
-    epoch = -1
+def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
+              num_epochs=10, lr_epsilon=1e-8, lgep=0.35, rs=0.001, show=False):
 
     def cal_reg_term(model, rs=0.001):
         layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
@@ -73,15 +46,26 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
         reg_term = (rs / (p + 1 + p * (m + 1))) * params
         return reg_term
 
-    def predict(outputs, v, device):
+    def predict(outputs, lgep, labels, device):
         pred = torch.zeros(outputs.shape[0]).to(device)
         for i in range(outputs.shape[0]):
-            if outputs[i].item() < v:
-                pred[i] = 0
-            else:
+            if np.abs(outputs[i].item() - labels[i].item()) <= lgep:
                 pred[i] = 1.0
+            else:
+                pred[i] = 0
         return pred
 
+    # local variables
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
+    train_acc_history = []
+    train_loss_history = []
+    val_loss_history = []
+    val_acc_history = []
+    lr_epsilon = lr_epsilon
+    goal_failed = False
+    tiny_lr = False
+    checkpoint = None
+    epoch = -1
 
     while epoch < num_epochs:
         torch.save({'model_state_dict': model.state_dict(),
@@ -95,7 +79,6 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
                 model.train()
             else:
                 model.eval()
-
             if epoch == -1:
                 for inputs, labels in dataloaders[phase]:
                     s = inputs.size(0)
@@ -114,10 +97,11 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
                             loss.backward()
                             optimizer.step()
                 epoch_loss = running_loss / dataset_sizes[phase]
-                goal_achieved, v, omin, zmax = learning_goal_lsc(model, dataloaders[phase], v, device, n)
+                goal_achieved = learning_goal_1(model, dataloaders['train'], lgep, device)
                 if goal_achieved:
                     former_loss = epoch_loss
                     epoch += 1
+                    print('a')
                     break
                 else:
                     goal_failed = True
@@ -135,10 +119,10 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
                     outputs = model(inputs)
                     reg_term = cal_reg_term(model, rs)
                     loss = criterion(outputs.squeeze(-1), labels) + reg_term
-                    pred = predict(outputs, v, device)
+                    pred = predict(outputs, lgep, labels, device)
                     # statistics
                     running_loss += loss.item() * s
-                    corrects += torch.sum(pred == labels.flatten().data)
+                    corrects += torch.sum(pred).item()
                     if phase == 'train':
                         # backward & adjust weights
                         loss.backward()
@@ -152,7 +136,7 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
                 # weight tuning
                 if epoch_loss <= former_loss:
                     # learning goal
-                    goal_achieved, v = learning_goal_lsc(model, dataloaders[phase], device, n)
+                    goal_achieved = learning_goal_1(model, dataloaders['train'], lgep, device)
                     if goal_achieved:
                         optimizer.param_groups[0]['lr'] *= 1.2
                         torch.save({'model_state_dict': model.state_dict(),
@@ -220,33 +204,38 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, v, device,PATH='../w
 
 
 # reorganize function below include regularization, weight-tunning and prunning hidden node
-def reorg_model(model, criterion, dataloaders, dataset_sizes, v, device,
-                PATH='../weights/reorg_checkpoint.pt', lr_epsilon=1e-8, n=1,rs=0.001):
+def reorg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reorg_checkpoint.pt',
+                lr_epsilon=1e-6, lgep=0.35, n=1,rs=0.001):
+
     layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
     p = layers[0].out_features
     k = 0
     while k < p:
-        result = reg_model(model, criterion, dataloaders, dataset_sizes, v, device,
-                           PATH='../weights/reg_checkpoint.pt', num_epochs=10, lr_epsilon=lr_epsilon, n=n, rs=rs)
+        result = reg_model(model, criterion, dataloaders, dataset_sizes, device, PATH='../weights/reg_checkpoint.pt',
+                           num_epochs=20, lr_epsilon=lr_epsilon, lgep=lgep, rs=rs)
 
         # store model state dict
         torch.save(result['model'], PATH)
         model.load_state_dict(torch.load(PATH))
         msd = model.state_dict()
+
+        # ignore some weights
         for key in msd.keys():
-            if key == '0.weight':
+            if key == 'l1.weight':
                 msd[key] = msd[key][[x for i, x in enumerate(range(p)) if i != k], :]
-            elif key == '0.bias':
+            elif key == 'l1.bias':
                 msd[key] = msd[key][[x for i, x in enumerate(range(p)) if i != k]]
-            elif key == '2.weight':
+            elif key == 'l2.weight':
                 msd[key] = msd[key][:, [x for i, x in enumerate(range(p)) if i != k]]
 
-        model = nn.Sequential(nn.Linear(12, p - 1), nn.ReLU(),
-                              nn.Linear(p - 1, 1), nn.ReLU()).to(device)
+        m = next(iter(dataloaders['train']))[0].shape[-1]
+        model = slfn(m, p).to(device)
         model.load_state_dict(msd)
+
         print('Start weight-tuning')
-        result = EU_LG_UA.train_model(model, criterion, dataloaders, dataset_sizes, device,
-                                      epsilon=lr_epsilon, num_epochs=50, n=n, show=False, v=v)
+        result = EU_LG_UA.train_model_lgt1_reg(model, criterion, dataloaders, dataset_sizes, device,
+                                                 PATH='../weights/train_checkpoint.pt',
+                                                 epsilon=1e-6, num_epochs=50, lgep=0.35, show=False)
         print('Finish weight-tuning')
         if result['result']:
             print('p--')
@@ -255,8 +244,7 @@ def reorg_model(model, criterion, dataloaders, dataset_sizes, v, device,
         else:
             print('k++')
             k += 1
-            model = nn.Sequential(nn.Linear(12, p), nn.ReLU(),
-                                  nn.Linear(p, 1)).to(device)
+            model = slfn(m, p).to(device)
             model.load_state_dict(torch.load(PATH))
         print(f'k: {k}, p: {p}')
 
