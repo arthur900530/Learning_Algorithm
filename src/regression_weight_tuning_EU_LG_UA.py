@@ -207,7 +207,7 @@ def learning_goal_1(model, dataloader, ep, device):
 
 
 def train_model_lgt1_reg(model, criterion, dataloaders, dataset_sizes, device, PATH='../weights/train_checkpoint.pt',
-                            epsilon=1e-6, num_epochs=30, lgep=0.3, show=True):
+                            epsilon=1e-6, num_epochs=30, lgep=0.2, show=True):
     def predict(outputs, ep, labels, device):
         pred = torch.zeros(outputs.shape[0]).to(device)
         for i in range(outputs.shape[0]):

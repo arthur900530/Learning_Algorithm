@@ -34,12 +34,12 @@ def learning_goal_1(model, dataloader, ep, device):
     return True
 
 def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
-              num_epochs=10, lr_epsilon=1e-8, lgep=0.3, rs=0.001, show=False):
+              num_epochs=10, lr_epsilon=1e-8, lgep=0.2, rs=0.001, show=False):
 
     def cal_reg_term(model, rs=0.001):
-        layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
-        m = layers[0].in_features
-        p = layers[0].out_features
+        m = next(iter(dataloaders['train']))[0].shape[-1]
+        params = model.state_dict()
+        p = params['l1.weight'].shape[0]
         params = 0
         for p in model.parameters():
             params += torch.sum(p ** 2)
