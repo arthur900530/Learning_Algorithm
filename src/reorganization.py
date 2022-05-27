@@ -34,7 +34,7 @@ def learning_goal_1(model, dataloader, ep, device):
     return True
 
 def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reg_checkpoint.pt',
-              num_epochs=10, lr_epsilon=1e-8, lgep=0.2, rs=0.001, show=False):
+              num_epochs=10, lr_epsilon=1e-8, lgep=0.3, rs=0.001, show=False):
 
     def cal_reg_term(model, rs=0.001):
         layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
@@ -205,10 +205,10 @@ def reg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weig
 
 # reorganize function below include regularization, weight-tunning and prunning hidden node
 def reorg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../weights/reorg_checkpoint.pt',
-                lr_epsilon=1e-6, lgep=0.35, n=1,rs=0.001):
+                lr_epsilon=1e-6, lgep=0.25, n=1,rs=0.001):
 
-    layers = [module for module in model.modules() if not isinstance(module, nn.Sequential)]
-    p = layers[0].out_features
+    p = model.state_dict()['l1.weight'].shape[0]
+    print(f'Init p: {p}')
     k = 0
     while k < p:
         result = reg_model(model, criterion, dataloaders, dataset_sizes, device, PATH='../weights/reg_checkpoint.pt',
@@ -235,7 +235,7 @@ def reorg_model(model, criterion, dataloaders, dataset_sizes, device,PATH='../we
         print('Start weight-tuning')
         result = EU_LG_UA.train_model_lgt1_reg(model, criterion, dataloaders, dataset_sizes, device,
                                                  PATH='../weights/train_checkpoint.pt',
-                                                 epsilon=1e-6, num_epochs=50, lgep=0.2, show=False)
+                                                 epsilon=1e-6, num_epochs=50, lgep=0.3, show=False)
         print('Finish weight-tuning')
         if result['result']:
             print('p--')
