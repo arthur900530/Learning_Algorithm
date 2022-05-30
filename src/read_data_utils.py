@@ -36,7 +36,6 @@ class dataDatasetMSE(Dataset):
         # load csv data
         X = data.iloc[:, :-1].values
         y = data.iloc[:, -1].values
-        print(y.shape)
 
         # feature scaling
         sc = StandardScaler()
@@ -45,14 +44,14 @@ class dataDatasetMSE(Dataset):
         if self.mode == 'train':
             self.X = X[index]
             self.y = y[index]
-            print(self.y.shape)
+            # print(self.X.shape)
         elif self.mode == 'val':
             self.X = np.delete(X, index, 0)
             self.y = np.delete(y, index, 0)
-            print(self.y.shape)
+            # print(self.X.shape)
         # convert to tensors
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.float32)
+        self.X = torch.tensor(self.X, dtype=torch.float32)
+        self.y = torch.tensor(self.y, dtype=torch.float32)
 
     def __len__(self):
         return len(self.y)
@@ -60,7 +59,7 @@ class dataDatasetMSE(Dataset):
     def __getitem__(self, index):
         return self.X[index], self.y[index]
 
-def read_data(FOLDERNAME, batch_size = None, mode = 'cross_entropy'):
+def read_data(FOLDERNAME, batch_size = None, mode = 'mse'):
     if mode == 'cross_entropy':
       datasets = {'train': dataDataset(FOLDERNAME, 'train'), 'val': dataDataset(FOLDERNAME, 'val')}
       if batch_size == None:

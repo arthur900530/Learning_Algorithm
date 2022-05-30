@@ -20,11 +20,11 @@ def init_RELU_EU_LG_UA_Regression(p, criterion, dataloaders, dataset_sizes, lear
     if learning_goal == 'lsc':
         train_result = EU_LG_UA.train_model_lsc(model, criterion, dataloaders, dataset_sizes, device,
                                                 PATH='../weights/train_checkpoint.pt',
-                                                epsilon=1e-6, num_epochs=50, n=1, show=True, v=0.6)
+                                                lr_epsilon=1e-6, num_epochs=50, n=1, show=True, v=0.6)
     elif learning_goal == 'lgt1':
         train_result = EU_LG_UA.train_model_lgt1_reg(model, criterion, dataloaders, dataset_sizes, device,
                                                  PATH='../weights/train_checkpoint.pt',
-                                                 epsilon=1e-6, num_epochs=50, lgep=lgep, show=True)
+                                                 lr_epsilon=1e-6, num_epochs=50, lgep=lgep, show=True)
     else:
         print('No such learning goal...')
         return None
