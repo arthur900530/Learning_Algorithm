@@ -59,6 +59,38 @@ class dataDatasetMSE(Dataset):
     def __getitem__(self, index):
         return self.X[index], self.y[index]
 
+
+def get_data_mse(FOLDERNAME, mode):
+    data = pd.read_csv(FOLDERNAME, header=None)
+    index = np.random.choice(data.shape[0], int(data.shape[0] * 0.4), replace=False)
+    X = data.iloc[:, :-1].values
+    y = data.iloc[:, -1].values
+
+    # feature scaling
+    sc = StandardScaler()
+    X = sc.fit_transform(X)
+
+    if mode == 'train':
+        X = X[index]
+        y = y[index]
+    elif mode == 'val':
+        X = np.delete(X, index, 0)
+        y = np.delete(y, index, 0)
+
+    X = torch.tensor(X, dtype=torch.float32)
+    y = torch.tensor(y, dtype=torch.float32)
+
+    return (X, y)
+
+def read_data_mse(FOLDERNAME):
+    datasets = {'train': get_data_mse(FOLDERNAME, 'train'),
+                    'val': dataDatasetMSE(FOLDERNAME, 'val')}
+    dataset_sizes = {x: len(datasets[x]) for x in ['train', 'val']}
+
+    return datasets, dataset_sizes
+
+
+
 def read_data(FOLDERNAME, batch_size = None, mode = 'mse'):
     if mode == 'cross_entropy':
       datasets = {'train': dataDataset(FOLDERNAME, 'train'), 'val': dataDataset(FOLDERNAME, 'val')}
