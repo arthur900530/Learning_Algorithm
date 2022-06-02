@@ -82,3 +82,16 @@ def read_data(FOLDERNAME, batch_size = None, mode = 'mse'):
       
     return dataloaders, dataset_sizes
 
+
+def random_pick_data(FOLDERNAME, d_num = 20):
+    for i in range(d_num):
+        num = i + 1
+        print(num)
+        data = pd.read_csv(FOLDERNAME, header=None).to_numpy()
+        # print(data.shape)
+        index = np.random.choice(data.shape[0], int(data.shape[0] * 0.8), replace=False)
+        data2 = data[index]
+        # print(data2.shape)
+        file_name = f'{num}_Random_picked_copper_forecasting_data.csv'
+        np.savetxt(file_name, data2, delimiter=',', fmt='%f')
+
